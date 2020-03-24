@@ -19,7 +19,7 @@ class CameraControlGUI:
         master.title("Camera Control")
 
         self.ser = serial.Serial(port, baud_rate)
-        self.camera = gp.check_result(gp.gp_camera_new())       
+        self.camera = gp.Camera() 
         
         # GUI for control of motor speed
         """
@@ -243,7 +243,7 @@ class CameraControlGUI:
         capture_path = filedialog.askdirectory()
         self.show_info()
         camera_capture_light_field(self.camera, self.ser, self.views.get(), self.exposures.get(), 
-                self.stops.get(), capture_path)
+                self.stops.get())
         # if hdr_merging is True:
         #     merge_light_field(capture_path, camera_name, self.exposures.get())
         self.current_location.configure(text="0")

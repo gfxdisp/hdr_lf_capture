@@ -51,53 +51,52 @@ def camera_capture_image(camera, path='/tmp'):
 Capture light field as a set of images and store in path
 camera - gp_camera object
 ser - Serial object for serial communication
-path - path on the Raspberry Pi where captured images are stored
 n_views - number of views for the capture
 n_exposures - number of exposures for the camera bracketing mode
 
 """
-def camera_capture_light_field(camera, ser, n_views, n_exposures, stops=2.0, path='/tmp'):
+def camera_capture_light_field(camera, ser, n_views, n_exposures, stops=2.0,
+            base_exposure=0.01, ext='.arw'):
     # initialize camera location
     ser.write(b'm0')
-    # check and create output dirctory for capture
-    output_dir = os.path.join(path, "capture")
-    if not os.path.exists(output_dir):
-        os.mkdir(output_dir)
-    else:
-        n_folder = 0
-        while os.path.exists(output_dir):
-            n_folder += 1
-            output_dir = os.path.join(path, "capture-{}".format(n_folder))
-        os.mkdir(output_dir)
     # capture process
     for capture_location in range(n_views):
         # initialize camera
-        gp.check_result(gp.gp_camera_init(camera))
+        context = gp.Context()
+        camera.init(context)
+        config = camera.get_config(context)
+        shutterspeed_node = config.get_child_by_name('shutterspeed')
+        # write to SD card
+        capture_target_node = config.get_child_by_name('capturetarget')
+        capture_target_node.set_value('1')
+        # set ISO
+        iso_node = config.get_child_by_name('iso')
+        iso_node.set_value('100')
+
         # wait for camera to stop moving and trigger camera capture
         process = ser.readline()
-        gp.check_result(gp.gp_camera_trigger_capture(camera))
+        # capture HDR stack
+        for file_number in range(n_exposures):
+            # file format: capt-<sequence>-<distance(mm)>[<exposure(EV)>].arw
+            # e.g. capt-001-0100[-2.0].arw
+            camera_file = "capt-{:0>3d}-{:0>4d}[{:+.1f}]".format(
+                            capture_location*n_exposures + file_number,
+                            int(capture_location*(1000/(n_views-1))),
+                            stops*file_number)
+                        + ext
+            camera.file_set_info('/', camera_file, gp.GP_FILE_TYPE_NORMAL, context)
+            # update exposure time and capture
+            shutterspeed_node.set_value(str(base_exposure*2**(stops*file_number)))
+            camera.set_config(config)
+            camera.capture(gp.GP_CAPTURE_IMAGE)
+            # Wait till capture is done
+            event = camera.wait_for_event(1)[0]
+            while event != gp.GP_EVENT_FILE_ADDED:
+                event = camera.wait_for_event(1)[0]
         # move to the next location
         if capture_location is not n_views-1:
             ser.write(b'm' + str((capture_location+1)*(1000//(n_views-1))).encode('UTF-8'))
-        # save the captured files to path    
-        file_number = 0
-        while file_number < n_exposures:
-            gp.check_result(gp.gp_camera_wait_for_event(
-                    camera, gp.GP_EVENT_FILE_ADDED))
-            # wait for new available file
-            file_list = list_files(camera)
-            # save the new file
-            if len(file_list) is not file_number:
-                # file format: capt-<sequence>-<distance(mm)>[<exposure(EV)>].arw
-                # e.g. capt-001-0100[-2.0].arw
-                target = os.path.join(output_dir, "capt-{:0>3d}-{:0>4d}[{:+.1f}]".format(
-                        capture_location*n_exposures + file_number, int(capture_location*(1000/(n_views-1))),
-                        stops*(file_number-n_exposures//2)) + file_list[file_number][-4:])
-                camera_file = gp.check_result(gp.gp_camera_file_get(
-                        camera, '/', file_list[file_number][1:], gp.GP_FILE_TYPE_NORMAL))
-                gp.check_result(gp.gp_file_save(camera_file, target))
-                file_number += 1
         # exit camera
-        gp.check_result(gp.gp_camera_exit(camera))
+        camera.exit()
     # return to initial location
     ser.write(b'm0')
