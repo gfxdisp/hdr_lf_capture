@@ -55,8 +55,7 @@ n_views - number of views for the capture
 n_exposures - number of exposures for the camera bracketing mode
 
 """
-def camera_capture_light_field(camera, ser, n_views, n_exposures, stops, path,
-            base_exposure=0.01, ext='.arw'):
+def camera_capture_light_field(camera, ser, n_views, exposures, path, ext='.jpg'): #arw
     # initialize camera location
     ser.write(b'm0')
     # capture process
@@ -88,16 +87,18 @@ def camera_capture_light_field(camera, ser, n_views, n_exposures, stops, path,
         # wait for camera to stop moving and trigger camera capture
         process = ser.readline()
         # capture HDR stack
-        for file_number in range(n_exposures):
+        for file_number in range(len(exposures)):
             # update exposure time and capture
-            shutterspeed_node.set_value(str(base_exposure*2**(stops*file_number)))
+            shutterspeed_node.set_value(exposures[file_number])
+            #print(str(base_exposure*2**(stops*file_number)))
             camera.set_config(config)
             file_path = camera.capture(gp.GP_CAPTURE_IMAGE)
             
             # Save file on pi
             # file format: capt_<view>_<exposure>.<extension>
             # Ex. capt_001_0.arw
-            target = os.path.join(path, f'capt_{capture_location:03}_{file_number}.{ext}')
+            # target = os.path.join(path, f'capt_{capture_location:03}_{file_number}.{ext}')
+            target = os.path.join(path, '_'.join(['capt', str(capture_location),str(file_number)+ext]))
             camera_file = camera.file_get(file_path.folder, file_path.name, gp.GP_FILE_TYPE_NORMAL)
             camera_file.save(target)
         

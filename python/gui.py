@@ -10,7 +10,7 @@ import gphoto2 as gp
 from control import *
 # from merge import merge_light_field
 
-camera_name = 'SonyA7r1'
+camera_name = 'SonyA7r3'
 # hdr_merging = False
 
 class CameraControlGUI:
@@ -238,15 +238,24 @@ class CameraControlGUI:
     def capture_image(self):
         camera_capture_image(self.camera)
         self.status_label.configure(text="Finished")
-
+    
     def capture_light_field(self):
         capture_path = filedialog.askdirectory()
         self.show_info()
+        n_exposures = self.exposures.get()
+        with open(os.path.join(capture_path, 'exposures'), 'r') as file:
+            exposures = file.readline().split(',')
+            assert len(exposures) == 5
+            if n_exposures == 3:
+                exposures = exposures[::2]
+            elif n_exposures == 1:
+                exposures = [exposures[2]]
+            
         # TODO: Pass smallest exposure time
-        camera_capture_light_field(self.camera, self.ser, self.views.get(), self.exposures.get(), 
-                self.stops.get(), capture_path)
+        camera_capture_light_field(self.camera, self.ser, self.views.get(), exposures, capture_path)
         # if hdr_merging is True:
         #     merge_light_field(capture_path, camera_name, self.exposures.get())
         self.current_location.configure(text="0")
         process = self.ser.readline()
         self.status_label.configure(text="Finished")
+        
