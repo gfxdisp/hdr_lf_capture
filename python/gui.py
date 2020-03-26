@@ -242,8 +242,9 @@ class CameraControlGUI:
     def capture_light_field(self):
         capture_path = filedialog.askdirectory()
         self.show_info()
+        # TODO: Pass smallest exposure time
         camera_capture_light_field(self.camera, self.ser, self.views.get(), self.exposures.get(), 
-                self.stops.get())
+                self.stops.get(), capture_path)
         # if hdr_merging is True:
         #     merge_light_field(capture_path, camera_name, self.exposures.get())
         self.current_location.configure(text="0")

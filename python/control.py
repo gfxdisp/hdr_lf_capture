@@ -55,7 +55,7 @@ n_views - number of views for the capture
 n_exposures - number of exposures for the camera bracketing mode
 
 """
-def camera_capture_light_field(camera, ser, n_views, n_exposures, stops=2.0,
+def camera_capture_light_field(camera, ser, n_views, n_exposures, stops, path,
             base_exposure=0.01, ext='.arw'):
     # initialize camera location
     ser.write(b'm0')
@@ -63,12 +63,24 @@ def camera_capture_light_field(camera, ser, n_views, n_exposures, stops=2.0,
     for capture_location in range(n_views):
         # initialize camera
         context = gp.Context()
-        camera.init(context)
+        inform_user = True
+        while True:
+            try:
+                camera.init(context)
+            except gp.GPhoto2Error as e:
+                if inform_user:
+                    print('Waiting for camera to be connected and switched on')
+                    inform_user = False
+                if e.code == gp.GP_ERROR_MODEL_NOT_FOUND:
+                    sleep(2)
+                    continue
+                raise
+            break
         config = camera.get_config(context)
         shutterspeed_node = config.get_child_by_name('shutterspeed')
-        # write to SD card
-        capture_target_node = config.get_child_by_name('capturetarget')
-        capture_target_node.set_value('1')
+        # # write to SD card - not supported by Sony alpha series
+        # capture_target_node = config.get_child_by_name('capturetarget')
+        # capture_target_node.set_value('1')
         # set ISO
         iso_node = config.get_child_by_name('iso')
         iso_node.set_value('100')
@@ -77,22 +89,18 @@ def camera_capture_light_field(camera, ser, n_views, n_exposures, stops=2.0,
         process = ser.readline()
         # capture HDR stack
         for file_number in range(n_exposures):
-            # file format: capt-<sequence>-<distance(mm)>[<exposure(EV)>].arw
-            # e.g. capt-001-0100[-2.0].arw
-            camera_file = "capt-{:0>3d}-{:0>4d}[{:+.1f}]".format(
-                            capture_location*n_exposures + file_number,
-                            int(capture_location*(1000/(n_views-1))),
-                            stops*file_number)
-                        + ext
-            camera.file_set_info('/', camera_file, gp.GP_FILE_TYPE_NORMAL, context)
             # update exposure time and capture
             shutterspeed_node.set_value(str(base_exposure*2**(stops*file_number)))
             camera.set_config(config)
-            camera.capture(gp.GP_CAPTURE_IMAGE)
-            # Wait till capture is done
-            event = camera.wait_for_event(1)[0]
-            while event != gp.GP_EVENT_FILE_ADDED:
-                event = camera.wait_for_event(1)[0]
+            file_path = camera.capture(gp.GP_CAPTURE_IMAGE)
+            
+            # Save file on pi
+            # file format: capt_<view>_<exposure>.<extension>
+            # Ex. capt_001_0.arw
+            target = os.path.join(path, f'capt_{capture_location:03}_{file_number}.{ext}')
+            camera_file = camera.file_get(file_path.folder, file_path.name, gp.GP_FILE_TYPE_NORMAL)
+            camera_file.save(target)
+        
         # move to the next location
         if capture_location is not n_views-1:
             ser.write(b'm' + str((capture_location+1)*(1000//(n_views-1))).encode('UTF-8'))
